@@ -1,0 +1,260 @@
+
+\documentclass[12pt]{article}
+\usepackage[pdfstartview=FitH,hidelinks]{hyperref}
+\usepackage[british]{babel}
+\usepackage{a4,graphicx}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{anyfontsize}
+\usepackage{bbm}
+\usepackage{xypic}
+\usepackage[latin1,utf8]{inputenc}
+\usepackage{marvosym}
+\usepackage{etoolbox}
+\usepackage{relsize}
+\usepackage{needspace}
+\usepackage{nameref}
+\usepackage{dsfont}
+%\usepackage{thmtools}
+%\usepackage{ntheorem}
+%\newtheorem{lho}{Sætning}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\usetikzlibrary{matrix}
+
+
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\B}{\mathcal{B}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\E}{\text{E}}
+\newcommand{\cov}{\text{cov}}
+\newcommand{\indic}[1]{\mathds{1}_{ \{ #1 \} }}
+\newcommand{\unv}[1]{\mathds{1}_{  #1  }}
+
+\newcommand{\Var}{\text{Var}}
+\renewcommand{\P}{\text{P}}
+\usepackage{caption}
+\usepackage{listings,lstautogobble}
+\usepackage{color}
+\usepackage{float}
+\usepackage{cprotect}
+\usepackage[round, comma]{natbib}
+\usepackage{csquotes}
+
+\interfootnotelinepenalty=10000
+
+\usepackage{filecontents}
+
+\definecolor{mygreen}{rgb}{0,0.6,0}
+\definecolor{mygray}{rgb}{0.9,0.9,0.9}
+\definecolor{mygray2}{rgb}{0.8,0.8,0.8}
+\definecolor{mymauve}{rgb}{0.58,0,0.82}
+
+\lstset{
+language=R,
+basicstyle=\scriptsize\ttfamily,
+commentstyle=\color{mygray},
+numbers=none,
+numberstyle=\ttfamily\color{mygray}\footnotesize,
+stepnumber=1,
+numbersep=5pt,
+backgroundcolor=\color{mygray2},
+showspaces=false,
+showstringspaces=false,
+showtabs=false,
+%frame=single,
+tabsize=2,
+captionpos=b,
+breaklines=true,
+breakatwhitespace=false,
+title=\lstname,
+escapeinside={},
+keywordstyle={},
+morekeywords={},
+extendedchars=\true,
+inputencoding=utf8,
+autogobble=true
+%,linewidth=0.8\textwidth
+}
+
+
+\begin{filecontents*}{BIBS_3.bib}
+
+
+
+@book{Banach,
+publisher = "Springer",
+isbn = "3319015869",
+year = "2014",
+title = "Topics in fixed point theory",
+copyright = "Adgang for KB, KUB, KU, RUC + Universitetshospitaler",
+language = "eng",
+address = "Cham",
+author = "Almezel, Saleh",
+keywords = "Fixed point theory; Analysis; Functional Analysis; Operator Theory; Optimization; MATHEMATICS - Calculus; MATHEMATICS - Mathematical Analysis; Fixed point theory; Mathematics",
+}
+
+
+
+@book{KSnell,
+publisher = {D. Van Norstrand},
+year = {1960},
+title = {Finite Markov chains},
+language = {eng},
+address = {Princeton, New Jersey},
+author = {Kemeny, John G and Snell, J. Laurie},
+keywords = {Markov chains with discrete parameter},
+}
+
+@article{Djehiche,
+issn = {01676687},
+abstract = {We suggest a unified approach to claims reserving for life insurance policies with reserve-dependent payments driven by multi-state Markov chains. The associated prospective reserve is formulated as a recursive utility function using the framework of backward stochastic differential equations (BSDE). We show that the prospective reserve satisfies a nonlinear Thiele equation for Markovian BSDEs when the driver is a deterministic function of the reserve and the underlying Markov chain. Aggregation of prospective reserves for large and homogeneous insurance portfolios is considered through mean-field approximations. We show that the corresponding prospective reserve satisfies a BSDE of mean-field type and derive the associated nonlinear Thiele equation. [web URL: http://www.sciencedirect.com/science/article/pii/S0167668715300548]},
+journal = {Insurance, Mathematics and Economics},
+volume = {69},
+publisher = {Elsevier Sequoia S.A.},
+year = {2016},
+title = {Nonlinear reserving in life insurance: Aggregation and mean-field approximation},
+language = {eng},
+address = {Amsterdam},
+author = {Djehiche, Boualem and Löfdahl, Björn},
+keywords = {Studies ; Life Insurance ; Insurance Claims ; Insurance Policies ; Differential Equations ; Stochastic Models ; Life and Health Insurance ; Experiment/Theoretical Treatment},
+url = {http://search.proquest.com/docview/1806433652/},
+}
+
+
+
+
+\end{filecontents*}
+
+
+
+\renewcommand{\Im}{\operatorname{\mathbb{I}m}}
+
+\newcommand{\sign}{\text{sign}}
+\newcommand\ddfrac[2]{\frac{\displaystyle #1}{\displaystyle #2}}
+
+%\usepackage[a4paper, hmargin={1.8cm, 1.8cm}, 
+%    vmargin={1.8cm, 1.8cm}
+%    ]{geometry} 
+\usepackage[a4paper
+, hmargin={2.05cm, 2.05cm}
+]{geometry} 
+\newcommand{\noin}{\noindent}
+
+\newcommand\independent{\protect\mathpalette{\protect\independenT}{\perp}}
+\def\independenT#1#2{\mathrel{\rlap{$#1#2$}\mkern2mu{#1#2}}}
+\font\tt=rm-lmtl10
+
+\newcommand\xqed[1]{%
+  \leavevmode\unskip\penalty9999 \hbox{}\nobreak\hfill
+  \quad\hbox{#1}}
+\newcommand\demo{\xqed{$\triangle$}}
+
+
+%\setcounter{MaxMatrixCols}{13}
+
+\graphicspath{{./figurer/}}
+
+\newcommand{\overbar}[1]{\mkern 1.5mu\overline{\mkern-1.5mu#1\mkern-1.5mu}\mkern 1.5mu}
+
+
+
+\newcounter{DefCounter}
+\newcounter{TheCounter}
+\newcounter{ExCount1}
+\newcounter{SubExCount1}
+\newcounter{ExCount2}
+\newcounter{SubExCount2}
+
+\newtheoremstyle{my_thm}% name
+  {12pt}%         Space above, empty = `usual value'
+  {12pt}%         Space below
+  {\itshape}% Body font
+  {}%         Indent amount (empty = no indent, \parindent = para indent)
+  {\bfseries}% Thm head font
+  {.}%        Punctuation after thm head
+  {\newline}% Space after thm head: \newline = linebreak
+  {}%         Thm head spec
+\theoremstyle{my_thm}
+\newtheorem{thm}{Theorem}[section]
+%\numberwithin{thm}{section}
+\newtheorem{lem}[thm]{Lemma}
+\newtheorem{post}[thm]{Postulate}
+
+\theoremstyle{definition}
+\newtheoremstyle{my_def}% name
+  {\topsep}%         Space above, empty = `usual value'
+  {\topsep}%         Space below
+  {}% 		  Body font
+  {}%         Indent amount (empty = no indent, \parindent = para indent)
+  {\bfseries}% Thm head font
+  {.}%        Punctuation after thm head
+  {\newline}% Space after thm head: \newline = linebreak
+  {}%         Thm head spec
+
+\theoremstyle{my_def}
+\newtheorem{defn}[thm]{Definition}
+\newtheorem{rem}[thm]{Remark}
+
+%Fortløbende eksempler defineres
+\newtheorem{examplexA}[SubExCount1]{Example}
+\newenvironment{exa1}
+  {\pushQED{\qed}\renewcommand{\qedsymbol}{$\triangle$}\examplexA}
+  {\popQED\endexamplexA}
+\numberwithin{SubExCount1}{ExCount1}
+
+
+%\AtBeginEnvironment{thm}{\begin{minipage}{\textwidth}}
+%\AtEndEnvironment{thm}{\end{minipage}}
+
+
+\DeclarePairedDelimiter\ceil{\lceil}{\rceil}
+\DeclarePairedDelimiter\floor{\lfloor}{\rfloor}
+
+\begin{document}
+
+\renewcommand{\arraystretch}{1.5}
+\captionsetup{width=0.8\textwidth}
+
+\title{Lumping Markov Processes in Life Insurance}
+%\abstract{
+%The Danish Financial Services Authority (FSA) are supporters of valuation of insurance liabilities through simulation of financial instruments (citation? julebrev + Solvens II). Due to the complex nature of insurance liabilities with guarantees and their connection to the financial market through
+%
+%
+%Lumping of Markov Processes has been a concern of statisticians since the nineteen-sixties \citet{KSnell}. However, the problems of interest have not been oriented towards life insurance mathematics, and for the large part has considered conservation of properties, in fact a process is by statisticians called lumpable \citet{KSnell} if and only if the lumped process of a Markov process also is a Markov process. In life insurance, we may be forced to lump a process, even though the procedure does not conserve the aesthetic properties of the original process.}
+
+\subsection*{Introduction and Motation}
+Machine learning methods have proven useful in the field of fraud detection (reference?). It is crucial that the man and machine collaboration is considered in conjunction - a computer cannot determine if a certain event was fraudulent or not, it can only suggest which events to further inspect. The need for human interaction limits the capability of the algorithm, and so the events that should be inspected need to be chosen optimally. We propose a definition of the strategy a company should adopt in order to maximize their fraud detection, and how this strategy is influenced by changes in the underlying fraud drivers.
+
+
+\subsection*{Set-up}
+$\mathcal{I}$ set of events. Denote by $X_i$ an indicator describing whether the $i^{th}$ event is fraudulent - could be insurance claims, credit card transactions, stock tradings or any other single event that can be fraudulent or not. Discrete time-points $\tau$, should be thought of as the smallest of the time it takes to evaluate $k$ policies, and the time it takes for $\mathcal{I}$ to be updated.
+
+
+\begin{exa1}
+Let the number of events be $\# \mathcal{I}=2n$, whereof $n$ events are of type 1 and the rest are of type 2. $\mathcal{I}=\mathcal{I}_1 \cup \mathcal{I}_2$. Assume that 
+\begin{align*}
+P(X_i=1)=
+\begin{cases}
+p_1 \quad \text{ for }& i \in \mathcal{I}_1\\
+p_2 \quad \text{ for }& i \in \mathcal{I}_2\\
+\end{cases}
+\end{align*}
+\end{exa1}
+
+\begin{defn}
+Strategy $\mathcal{K}$ is optimal if
+\begin{align*}
+\mathcal{K}_\tau=\arg \sup_{K} \E \left[ \sum_{i\in K} X_\tau^i \right]
+\end{align*}
+\end{defn}
+
+
+\newpage
+\bibliographystyle{plainnat}
+\bibliography{BIBS_3}
+
+
+\end{document}
