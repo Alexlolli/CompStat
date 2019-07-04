@@ -29,12 +29,9 @@ GenerateClaims.Insured <- function(obj){
 }
 
 
-I<-Insured(0.5)
+In<-Insured(0.5)
 
 GenerateClaims(I)
 
 # create list of insured.
 
-
-
-rbinom(10,1,0.5)
