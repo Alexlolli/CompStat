@@ -16,6 +16,18 @@ Insured <- function(p) {
   value
 }
 
+#A class for the machine to define how it predicts frauds
+Machine<-function(par){
+  #Class definition goes here. Preferably S4 class
+}
+
+
+#A class for the operator to define how 
+Operator<-function(par){
+  #Operator definiton goes here. Preferably S4 class
+}
+
+
 
 
 #A method for the insured to generate claims that are eiter fraud or not.
@@ -33,13 +45,10 @@ GenerateClaims.Insured <- function(obj){
 }
 
 
-#A class for the machine to define how it predicts frauds
-Machine<-function(par){
-  #Class definition goes here. Preferably S4 class
-}
+#A method for the machine to define a sorted list.
+#not finished
+
+#A method for the operator to choose based on machine recommendations.
 
 
-#A class for the operator to define how 
-Operator<-function(par){
-  #Operator definiton goes here. Preferably S4 class
-}
+
