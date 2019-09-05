@@ -1,0 +1,100 @@
+\documentclass[12pt]{article}
+\usepackage[pdfstartview=FitH,hidelinks]{hyperref}
+\usepackage[british]{babel}
+\usepackage{a4,graphicx}
+\usepackage[a4paper, hmargin={2.05cm, 2.05cm}]{geometry} 
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{anyfontsize}
+\usepackage{bbm}
+%\usepackage{xypic}
+\usepackage[latin1,utf8]{inputenc}
+\usepackage{marvosym}
+\usepackage{etoolbox}
+\usepackage{relsize}
+\usepackage{needspace}
+\usepackage{nameref}
+\usepackage{dsfont}
+%\usepackage{thmtools}
+%\usepackage{ntheorem}
+%\newtheorem{lho}{Sætning}
+\usepackage{filecontents}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\usetikzlibrary{matrix}
+\usepackage{empheq}
+
+\newcommand*\widefbox[1]{\fbox{\hspace{2em}#1\hspace{2em}}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\B}{\mathcal{B}}
+\newcommand{\F}{\mathcal{F}}
+\newcommand{\E}{\text{E}}
+\newcommand{\cov}{\text{cov}}
+\newcommand{\indic}[1]{\mathds{1}_{ \{ #1 \} }}
+\newcommand{\unv}[1]{\mathds{1}_{  #1  }}
+\newcommand\ddfrac[2]{\frac{\displaystyle #1}{\displaystyle #2}}
+\newcommand{\noin}{\noindent}
+\newcommand{\Var}{\text{Var}}
+\renewcommand{\P}{\text{P}}
+\renewcommand{\baselinestretch}{1.25} 
+
+\newcommand\independent{\protect\mathpalette{\protect\independenT}{\perp}}
+\def\independenT#1#2{\mathrel{\rlap{$#1#2$}\mkern2mu{#1#2}}}
+\font\tt=rm-lmtl10
+
+\newtheoremstyle{my_thm}% name
+  {12pt}%         Space above, empty = `usual value'
+  {12pt}%         Space below
+  {\itshape}% Body font
+  {}%         Indent amount (empty = no indent, \parindent = para indent)
+  {\bfseries}% Thm head font
+  {.}%        Punctuation after thm head
+  {\newline}% Space after thm head: \newline = linebreak
+  {}%         Thm head spec
+\theoremstyle{my_thm}
+\newtheorem{thm}{Theorem}[section]
+\newtheorem{lem}[thm]{Lemma}
+
+
+
+\usepackage{caption}
+\usepackage{listings,lstautogobble}
+\usepackage{color}
+\usepackage{float}
+\usepackage{cprotect}
+\usepackage[round, comma]{natbib}
+\usepackage{csquotes}
+
+\renewcommand{\mkbegdispquote}[2]{\itshape}
+
+
+
+
+\begin{document}
+
+\section*{Corrections}
+\begin{itemize}
+\item Section 1.2.2. "...say, we have do[to] move ..."
+\item Section 2.3.1 $R(x,h)=o(h^4)$ should be $R_2(x,h)=o(h^4)$
+
+\end{itemize}
+\section*{Dos and Don'ts}
+\begin{itemize}
+\item Use Sheather-Jones to estimate densities. \verb!bw = "SJ"! 
+\item tripel kolon kan bruges til at få adgang til interne funktioner (som ikke er i namespace) af en pakke.
+\item use range when both min and max are needed.
+\end{itemize}
+
+\section*{Ideas}
+\begin{itemize}
+\item Why not use another punishment for integrated error? For instance use
+$$
+\text{IPE}_p(\hat{f}_h)=\int (\hat{f}_h(x) - f_0(x))^p dx = ||\hat{f}_h -f_0 ||_p^p
+$$
+\item Use Hill-like plot to find $||f_0^{''}||^2_2$, as we know that AMISE should behave like $C n^{-4/5}$, for some $C$ that depends on $||f_0^{''}||^2_2$.
+\end{itemize}
+
+
+\end{document}
