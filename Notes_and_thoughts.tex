@@ -93,8 +93,56 @@
 $$
 \text{IPE}_p(\hat{f}_h)=\int (\hat{f}_h(x) - f_0(x))^p dx = ||\hat{f}_h -f_0 ||_p^p
 $$
-\item Use Hill-like plot to find $||f_0^{''}||^2_2$, as we know that AMISE should behave like $C n^{-4/5}$, for some $C$ that depends on $||f_0^{''}||^2_2$.
+\item Use Hill-like plot to find $||f_0^{''}||^2_2$, as we know that AMISE should behave like $C n^{-4/5}$, for some $C$ that depends on $||f_0^{''}||^2_2$.	
 \end{itemize}
+
+
+\section{Fun}
+"R doesn’t stop you from shooting yourself in the foot, but as long as you don’t aim the gun at your toes and pull the trigger, you won’t have a problem."
+\\
+
+\section{S3 class}
+
+\newpage
+\section*{Density Estimation}
+Let 
+$$
+H(x)=\frac{1}{\sqrt{2 \pi }}e^{\frac{-x^2}{2}}
+$$
+then
+$$
+H^{''}(x)=\frac{1}{\sqrt{2 \pi}} (x^2-1)e^{\frac{-x^2}{2}}
+$$
+We now want to calculate
+\begin{align*}
+||\tilde{f}^{''}||_2^2=&\frac{1}{n^2 r^2} \int H^{''}\left( \frac{x-x_i}{r}\right) H^{''}\left( \frac{x-x_j}{r}\right) dx 
+\\
+=&
+\frac{1}{n^2 r^2} \int \frac{1}{2 \pi} \left( \left( \frac{x-x_i}{r}\right)^2-1\right)e^{\frac{-\left(\frac{x-x_i}{r}\right)^2}{2}}\left( \left( \frac{x-x_j}{r}\right)^2-1\right)e^{\frac{-\left(\frac{x-x_j}{r}\right)^2}{2}} dx
+\\
+=&
+\frac{1}{n^2 r^2} \int \frac{1}{2 \pi} \left( \frac{(x-x_i)^2}{r^2}-1\right)\left( \frac{(x-x_j)^2}{r^2}-1\right)e^{\frac{-\left((x-x_i)^2+(x-x_j)^2\right)}{2r^2}} dx
+\end{align*}
+Define
+$$
+w_{ij}:=\sqrt{z_i^2+z_j^2}
+$$
+for 
+$$
+z_i=x-x_i
+$$
+and note that
+\begin{align*}
+\left( z_i^2-r^2\right)\left(z_j^2-r^2\right)
+=&
+z_i^2z_j^2-r^2w_{ij}^2+r^4
+\\
+=&
+\frac{w_{ij}^4}{2} -r^2w_{ij}^2+r^4- \frac{(z_i^4+z_j^4)}{2}
+\\
+=&
+r^4-r^2w_{ij}^2+ \frac{w_{ij}^4}{4}-\frac{w_{ij}^2x_i^2}{2}-\frac{w_{ij}^2x_j^2}{2}+w_{ij}x_ix_j+\frac{(x_i-x_j)^4}{4}
+\end{align*}
 
 
 \end{document}

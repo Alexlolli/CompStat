@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+  <head>
+    <title>Assignment 1   Density Estimation</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="ADA" />
+    <meta name="date" content="2019-09-18" />
+    <link rel="stylesheet" href="science.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Assignment 1 <br> Density Estimation
+### ADA
+### September 18, 2019
+
+---
+
+
+
+
+## Agenda
+
+
+* Set-up object orienting and binning.
+
+--
+
+* Benchmarking
+--
+
+* Bandwidth selection, minimizing AMISE or Cross-validation.
+--
+
+* AMISE: Silvermans rule of thumb. 
+
+--
+
+* AMISE: Estimating `\(||f_0^{''}||_2^2\)`
+
+--
+
+* K-fold Cross-validation
+
+--
+
+* Results
+
+--
+
+* Benchmarking and profiling.
+
+---
+
+## Problem 1.4
+
+Simulate multimodal data with density $$  f_0(x) = \frac{1}{2 }\left( \frac{1}{\sqrt{2\pi\sigma_1}} e^{\frac{-(x-\mu_1)^2}{2\sigma_1^2}}+ \frac{1}{\sqrt{2\pi\sigma_2}} e^{\frac{-(x-\mu_2)^2}{2\sigma_2^2}} \right) $$
+
+
+
+
+```r
+MM_var&lt;-rbinom(Nsim, size = 1,p=0.5) #Bernouilli variables
+
+x &lt;- (1-MM_var)* rnorm(Nsim, mean = par_1[1], sd = par_1[2]) +
+        MM_var * rnorm(Nsim, mean = par_2[1], sd = par_2[2])
+```
+
+
+
+
+&lt;img src="Presentation_ALL_files/figure-html/hist_sim_data-1.png" height="280" style="display: block; margin: auto;" /&gt;
+
+
+---
+## Estimating density
+
+Using Niels' vectorized implementation, for given bandwidth.
+
+
+```r
+EpDens &lt;- function (x, h, m = 512) {
+  rg &lt;- range(x)
+  xx &lt;- seq(rg[1] - 3 * h, rg[2] + 3 * h, length.out = m)
+  y &lt;- numeric(m) 
+  const &lt;- (h * length(x))
+  for (i in seq_along(xx))
+    y[i] &lt;- sum((1-(x-xx[i])^2/h^2)*(((x-xx[i])/h)&lt;1 &amp; ((x-xx[i])/h)&gt;-1))/const*3/4
+  list(x = xx, y = y)
+}
+```
+
+---
+## Bandwidth
+
+To calculate the bandwith that minimizes AMISE, we need to calculate `$$\sigma_{K}^4:=\left( \frac{3}{5}\int_{-1}^1 z^2(1-z^2) dz \right)^2 = \frac{1}{25}$$`
+`$$||K||_2^2:=\int_{-1}^1 \left(\frac{3}{4} (1-z^2) \right)^2 dz=\frac{3}{5}$$`
+and
+$$
+||f_0^{''}||_2^2=\int (f^{''}_0(z))^2 dz
+$$
+Which depends on the true density of the data `\(f_0\)`. We are cought in a Catch-22 situation!
+
+---
+## Estimating `\(||f_0^{''}||\)`
+
+Assume the data is Gaussian, then
+
+$$
+||f_0^{''}||_2^2=\frac{3}{8 \sigma^5 \sqrt{\pi}}
+$$
+Which depends on the standard deviation, that can be estimated emperically using the emperical standard deviation $. But Silverman suggests instead to use
+$$
+\tilde{\sigma}=\min \lbrace \hat{\sigma}, \text{IQR}/1.35 \rbrace
+$$
+
+&lt;img src="Presentation_ALL_files/figure-html/plot1-1.png" style="display: block; margin: auto;" /&gt;
+---
+## How does it look?
+
+&lt;img src="Presentation_ALL_files/figure-html/unnamed-chunk-5-1.png" style="display: block; margin: auto;" /&gt;
+
+
+
+---
+## Problem 1.4
+
+
+```r
+hist(log(infrared$F12), 20); rug(log(infrared$F12))
+hist(log(infrared$F12), 100); rug(log(infrared$F12))
+```
+
+&lt;img src="Presentation_ALL_files/figure-html/unnamed-chunk-6-1.png" style="display: block; margin: auto;" /&gt;
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:10",
+"navigation": {
+"scroll": false
+}
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();</script>
+
+<script>
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>
