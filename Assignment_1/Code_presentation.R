@@ -78,89 +78,109 @@ new_my_Kernel <- function(K, rng = c(-Inf, Inf), BW = "Silverman"){
   obj$silverman <- function(data)
     (4/(3*length(data)))^(1/5)*as.numeric(quantile(data,p=0.75)-quantile(data,p=0.25))/ 1.35
   
-  if(BW == "Silverman"){
-    obj$BW <- obj$silverman
-    
-  }else if(BW == "Plug_in"){
-    obj$BW <- function(data){
-      r <- obj$silverman(data)
-      
-      rng_data <- range(data)
-    
-      int_f2<-function(x)
-        sapply(x,function(x)
-          sum(outer(data,data,function(y,z) obj$DDif((x-y)/r)*obj$DDif((x-z)/r))))
-      
-      int_res <- integrate(int_f2,lower = rng_data[1]-r, upper = rng_data[2]+r, subdivisions = 100L, rel.tol = 0.05)
-      
-      f_est <- 1/(length(data)^2*r^6)*int_res$value
-      
-      (obj$K_2/(obj$sig_2^2*f_est))^(1/5)*length(data)^(-1/5)
-      
-    }
-  }else if(BW == "Plug_in_2"){
-    obj$BW <- function(data, weights = 1){
-      
-      r_last <- obj$silverman(data)
-      
-      rng_data <- range(data)
-      
-      r<-r_last
-      
-      bw_save<-NULL
-      
-      bw_save[1]<-r
-      
-      for(i in 2:16){ # Iterate 15 times
-        int_f2<-function(x)
-          sapply(x,function(x)
-            sum(outer(data,data,function(y,z) obj$DDif((x-y)/r_last)*obj$DDif((x-z)/r_last))))
-        
-        int_res <- integrate(int_f2,lower = rng_data[1]-r, upper = rng_data[2]+r, subdivisions = 100L, rel.tol =  0.07*0.9^i)
-        
-        f_est <- 1/(length(data)^2*r^6)*int_res$value
-        
-        r <- (obj$K_2/(obj$sig_2^2*f_est))^(1/5)*length(data)^(-1/5)
-        
-        smaller <- 0L
-        bigger <- 0L
-        
-        if((r_last-r)>0){
-          smaller <- smaller + 1
-          if(smaller == i){# we have not yet found lower bound
-            r <- r/2 #make next guess smaller
-          }else{
-            r <- (r_last-r)/2 #make next guess smaller
-          }
-        }else{
-          bigger  <- bigger + 1
-          if(bigger == i){# we have not yet found lower bound
-            r <- r*2 #make next guess bigger
-          }else{
-            r <- (r-r_last)/2 #make next guess bigger
-          }
-          
-        }
-        bw_save[i]<-r
-      }
-      bw_save
-    }
-  }else if(BW == "Cross_validation"){
-    
-  }else{
-    warning("No bandwidth selection method given")
-  }
-  
   structure(obj , class = c("myKernel"))
 }
-
-
 
 
 
 Ep_kern<-new_my_Kernel(K=expression(3/4*(1-x^2)),rng=c(-1,1), BW = "Silverman")
 
 curve(Ep_kern$Kernel(x),from = -1, to= 1)
+
+
+
+
+if(BW == "Silverman"){
+  obj$BW <- obj$silverman
+  
+}else if(BW == "Plug_in"){
+  obj$BW <- function(data){
+    r <- obj$silverman(data)
+    
+    rng_data <- range(data)
+    
+    int_f2<-function(x)
+      sapply(x,function(x)
+        sum(outer(data,data,function(y,z) obj$DDif((x-y)/r)*obj$DDif((x-z)/r))))
+    
+    int_res <- integrate(int_f2,lower = rng_data[1]-r, upper = rng_data[2]+r, subdivisions = 100L, rel.tol = 0.05)
+    
+    f_est <- 1/(length(data)^2*r^6)*int_res$value
+    
+    (obj$K_2/(obj$sig_2^2*f_est))^(1/5)*length(data)^(-1/5)
+    
+  }
+}else if(BW == "Plug_in_2"){
+  obj$BW <- function(data, weights = 1){
+    
+    r_last <- obj$silverman(data)
+    
+    rng_data <- range(data)
+    
+    r<-r_last
+    
+    bw_save<-NULL
+    
+    bw_save[1]<-r
+    
+    for(i in 2:16){ # Iterate 15 times
+      int_f2<-function(x)
+        sapply(x,function(x)
+          sum(outer(data,data,function(y,z) obj$DDif((x-y)/r_last)*obj$DDif((x-z)/r_last))))
+      
+      int_res <- integrate(int_f2,lower = rng_data[1]-r, upper = rng_data[2]+r, subdivisions = 100L, rel.tol =  0.07*0.9^i)
+      
+      f_est <- 1/(length(data)^2*r^6)*int_res$value
+      
+      r <- (obj$K_2/(obj$sig_2^2*f_est))^(1/5)*length(data)^(-1/5)
+      
+      smaller <- 0L
+      bigger <- 0L
+      
+      if((r_last-r)>0){
+        smaller <- smaller + 1
+        if(smaller == i){# we have not yet found lower bound
+          r <- r/2 #make next guess smaller
+        }else{
+          r <- (r_last-r)/2 #make next guess smaller
+        }
+      }else{
+        bigger  <- bigger + 1
+        if(bigger == i){# we have not yet found lower bound
+          r <- r*2 #make next guess bigger
+        }else{
+          r <- (r-r_last)/2 #make next guess bigger
+        }
+        
+      }
+      bw_save[i]<-r
+    }
+    bw_save
+  }
+}else if(BW == "Cross_validation"){
+  
+}else{
+  warning("No bandwidth selection method given")
+}
+
+
+
+y<-hist(rnorm(1000),plot=F)
+
+plot(y)
+
+class(y)<-"myKernel"
+
+Bw_select(y)
+
+Bw
+
+Bw_select.myKernel<-function(x)
+  print("hej")
+
+plot.histogram
+
+
 
 Ep_kern$BW(rnorm(1000))
 
