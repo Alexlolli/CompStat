@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+  <head>
+    <title>Assignment 1   Kernel density estimation</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="ADA" />
+    <meta name="date" content="2019-09-18" />
+    <link rel="stylesheet" href="science.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Assignment 1 <br> Kernel density estimation
+### ADA
+### September 18, 2019
+
+---
+
+
+## Assignment 1: Density estimation
+
+Implement a kernel density estimator using the Epanechnikov kernel, `\(K(x) = \frac34(1 â x^2)1_{[â1,1]}(x)\)`, and implement one or more bandwidth selection algorithms using either AMISE plug-in methods or cross-validation methods. Test the implementation and compare the results with the results of using density in R. It may be a good idea to use real data to investigate how the bandwidth selection works, but for benchmarking and profiling it is best to use simulated data. Think about how to make your implementation as general and generic as possible.
+
+---
+
+
+## Kernel object
+
+
+```r
+myKernel &lt;- function(K, rng = c(-Inf, Inf)){
+  
+  if(!is.expression(K)){
+    stop("Kernel expression missing",
+         call. = FALSE)
+  }
+  
+  obj &lt;- list()
+  obj$rng = rng
+  obj$kernel &lt;- function(x)
+    eval(K) * (x &gt;= rng[1] &amp; x &lt;= rng[2])
+  
+  Int_K &lt;- try(integrate(obj$kernel, lower = obj$rng[1], 
+                         upper = obj$rng[2]), silent = T)
+  
+  if(class(Int_K) == "try-error"){
+    stop(warning(Int_K))
+  }else if(!(Int_K$value &lt; 1.01 &amp; Int_K$value &gt; 0.99 &amp; 
+             Int_K$abs.error &lt; 0.1)){
+    stop(paste("Kernel integrates to", Int_K$value))
+  }
+  
+  structure(obj , class = c("myKernel"))
+
+}
+```
+
+---
+
+## Kernel object 
+
+We include `\(||K||_2^2\)` and `\(\sigma^2_K\)` in myKernel and check if they are well-defined
+
+`\begin{align*}
+||K||_2^2 = \int K(x)^2 \text{d}x \\
+\sigma^2_K = \int x^2 K(x) \text{d}x
+\end{align*}`
+
+
+
+```r
+  obj$sig_2 &lt;- integrate(function(x) x^2 * obj$kernel(x), 
+                         lower = obj$rng[1], 
+                         upper = obj$rng[2])
+  ifelse(obj$sig_2$abs.error &lt; 1e-12,
+         obj$sig_2 &lt;- obj$sig_2$value, 
+         warning("Could not evaluate sigma_K^2"))
+  
+  obj$K_2 &lt;- integrate(function(x) obj$kernel(x)^2, 
+                       lower = obj$rng[1], 
+                       upper = obj$rng[2])
+  ifelse(obj$K_2$abs.error &lt; 1e-12,
+         obj$K_2 &lt;- obj$K_2$value, 
+         warning("Could not evaluate K_2^2"))
+```
+
+---
+
+## Kernel object
+
+We include Silverman's rule of thumb as a function in myKernel.
+
+`\begin{align*}
+h_n = \biggl( \frac{||K||_2^2}{\sigma_K^4 ||f_0''||_2^2}\biggr)^{1/5} n^{-1/5}
+\end{align*}`
+
+
+
+```r
+  obj$silverman &lt;- function(data, norm_K, sigma_K) {
+    sigma &lt;- min(sd(data), 
+                 as.numeric(quantile(data, p=0.75) - 
+                                        quantile(data, p=0.25))/ 1.35)
+    ddf &lt;- 1 / (2 * sqrt(pi)) * 3 / (4 * sigma^5)
+    (norm_K / (sigma_K^2 * ddf))^(1 / 5) * 
+      length(data)^(- 1 / 5)
+  }
+```
+
+---
+
+## Kernel object
+
+We include a function that makes leave-one-out cross validation
+
+
+```r
+obj$LOOCV &lt;- function(data, h) {
+    n &lt;- length(data)
+    z &lt;- numeric(n)
+    for(i in seq_along(data)) {
+      y &lt;- data[-i]
+      z[i] &lt;- sum(obj$kernel((data[i] - y) / h)) / 
+        ((n - 1) * h)
+    }
+    sum((z))
+  }
+```
+
+---
+## Kernel object
+
+We call myKernel with the Epanechnikov kernel 
+
+`\begin{align*}
+K(x) = \frac{3}{4}(1 - x^2) 1_{[-1,1]}(x)
+\end{align*}`
+
+
+
+```r
+myKernel_ep &lt;- myKernel(K = expression(3 / 4 * (1 - x^2)), 
+                rng = c(-1, 1))
+```
+
+---
+
+## Bandwidth selection
+
+We implement a bandwidth selection method that takes myKernel as argument 
+
+Methods:
+
+* Silverman's rule of thumb
+
+* Plug-in methods with the gaussian and Epanechnikov kernel as pilot
+
+* Leave-one-out cross validation
+
+
+```r
+bandwidth.myKernel &lt;- function(obj, data, 
+                               method = "plug-in",
+                               pilot = "gauss") {
+  
+  method &lt;- match.arg(method, c("silverman", "plug-in", 
+                                "cv"))
+  
+  if(method == "silverman")
+    h &lt;- obj$silverman(data, obj$K_2, obj$sig_2)
+ 
+  h
+   
+}
+```
+
+---
+
+## Bandwidth selection - plug-in methods
+
+We can calculate 
+
+`\begin{align*}
+||\tilde{f}''||_2^2 = \frac{1}{n^2 r^6} \sum_{i=1}^n \sum_{j=1}^n \int H''\Bigl( \frac{x - x_i}{r} \Bigr) H''\Bigl( \frac{x - x_j}{r} \Bigr) \text{d} x
+\end{align*}`
+
+analytically for the gaussian and the Epanechnikov kernels
+
+`\begin{align*}
+r = \biggl( \frac{||H||_2^2}{\sigma_H^4 ||f_0||_2^2}\biggr)^{1/5} n^{-1/5} \\
+h = \biggl( \frac{||K||_2^2}{\sigma_K^4 ||\tilde{f}''||_2^2}\biggr)^{1/5} n^{-1/5}
+\end{align*}`
+
+---
+
+## Bandwidth selection - plug-in methods
+
+
+
+```r
+if(method == "plug-in") {
+    
+    n &lt;- length(data)
+    s &lt;- numeric(n - 1)
+    if(pilot == "gauss") {
+      r &lt;- obj$silverman(data, 1 / (2 * sqrt(pi)), 1)
+      for(i in seq_along(data[-1])){
+        z &lt;- (1 / (2 * sqrt(pi)) * exp(-(data[i] - data[(i + 1):n])^2 / (4 * r^2)) * 
+                (3 / 4 * r - 3 / (4 * r) * (data[i] - data[(i + 1):n])^2 + 
+                   (data[i] - data[(i + 1):n])^4 / (16 * r^3)))
+        s[i] &lt;- sum(z)
+      }
+      diagonal &lt;- (1 / (2 * sqrt(pi)) * 1 * (3 / 4 * r))
+      f &lt;- 1 / (n^2 * r^6) * (sum(s) * 2 + n * diagonal)
+      h &lt;- (obj$K_2 / (obj$sig_2^2 * f))^(1 / 5) * n^(- 1 / 5)
+    }
+    
+  }
+```
+
+---
+## Bandwidth selection - plug-in
+
+
+```r
+if(method == "plug-in") {
+    
+    n &lt;- length(data)
+    s &lt;- numeric(n - 1)
+    
+    if(pilot == "ep") {
+      r &lt;- obj$silverman(data, 0.6, 0.2)
+      for(i in seq_along(data[-1])){
+        z &lt;- (pmin(data[i], data[(i + 1):n]) - 
+                pmax(data[i], data[(i + 1):n]) + 2 * r)
+        s[i] &lt;- sum(z * (z &gt; 0))
+      }
+      f &lt;- 1 / (n^2 * r^6) * 9 / 4 * (sum(s) * 2 + n * 2 * r)
+        
+      h &lt;- (obj$K_2 / (obj$sig_2^2 * f))^(1 / 5) * n^(- 1 / 5)
+    }
+  }
+```
+
+---
+
+## Bandwidth selection - LOOCV
+
+`\begin{align*}
+&amp;\hat{f}_h^{-i} = \frac{1}{h(n-1)}\sum_{\substack{j=1 \\ j\neq i}}^n K\Bigl( \frac{x_i - x_j}{h} \Bigr) \\
+&amp;L_{CV}(h) = \sum_{i=1}^n \hat{f}_h^{-i} \\
+&amp;\hat{h} = \arg \max L_{CV}(h)
+\end{align*}`
+
+
+
+
+```r
+if(method == "cv") {
+    h &lt;- optim(par = 0.2, 
+               fn = function(h) - obj$LOOCV(data, h),
+               method = "Brent", lower = 0.000001, 
+               upper = 10^3)$par
+  }
+```
+
+---
+
+## Density estimation
+
+We implement a density estimation method that takes myKernel as argument and calls the bandwidth selection method
+
+
+```r
+density.myKernel &lt;- function(obj, data, m = 512,
+                             bw = "plug-in",
+                             pilot = "gauss",
+                             binning = FALSE) {
+  
+  if(is.numeric(bw)) h &lt;- bw
+  else h &lt;- bandwidth.myKernel(obj, data, method = bw, pilot)
+  
+  rg &lt;- range(data) + c(-3 * h, 3 * h)
+  xx &lt;- seq(rg[1], rg[2], length.out = m)
+  y &lt;- numeric(m) 
+  for (i in seq_along(xx)) {
+    y[i] &lt;- sum(obj$kernel((xx[i] - data) / h))
+  }
+  y &lt;- y / (length(data) * h)
+  list(x = xx, y = y, h = h)
+}
+```
+
+---
+
+## Density estimation - binning
+
+We include binning in the method
+
+
+```r
+  rg &lt;- range(data) + c(-3 * h, 3 * h)
+  xx &lt;- seq(rg[1], rg[2], length.out = m)
+  
+  if(binning == FALSE){
+    y &lt;- numeric(m) 
+    for (i in seq_along(xx)) {
+      y[i] &lt;- sum(obj$kernel((xx[i] - data) / h))
+    }
+    y &lt;- y / (length(data) * h)
+  }
+  if (!binning == FALSE){
+    weights &lt;- kernbin(data, rg[1], rg[2], m)
+    kerneval &lt;- obj$kernel((xx - xx[1]) / h) / h
+    kerndif &lt;- toeplitz(kerneval)
+    y &lt;- colSums(weights * kerndif)
+  }
+  list(x = xx, y = y, h = h)
+```
+
+---
+
+## Testing the implementation
+
+Silverman's rule of thumb
+
+We scale the Epanechnikov kernel to have variance 1 to be able to compare with the density function
+
+
+```r
+myKernel_ep &lt;- myKernel(K = expression(3 / 4 * (1 - x^2 / 5) / sqrt(5)),
+                        rng=c(-sqrt(5), sqrt(5)))
+
+myKernel_gauss &lt;- myKernel(K = expression(1 / (sqrt(2 * pi)) * exp(-x^2 / 2)),
+                           rng = c(-Inf, Inf))
+```
+
+We test on the logarithm to the F12 data 
+
+
+```r
+infrared &lt;- read.table("infrared.txt", header = TRUE)
+F12 &lt;- infrared$F12
+
+density(log(F12), kernel = "epanechnikov")$bw
+```
+
+```
+[1] 0.2071217
+```
+
+```r
+density(log(F12), kernel = "gaussian")$bw
+```
+
+```
+[1] 0.2071217
+```
+
+```r
+bandwidth.myKernel(myKernel_ep, log(F12), method = "silverman")
+```
+
+```
+[1] 0.23955
+```
+
+```r
+bandwidth.myKernel(myKernel_gauss, log(F12), method = "silverman")
+```
+
+```
+[1] 0.2419591
+```
+
+---
+## Silverman vs Silverman
+Original version, or not
+
+
+
+```r
+min(sd(log(F12)), IQR / 1.34) * 0.9 * length(F12)^(-1 / 5)
+```
+
+```
+[1] 0.2071217
+```
+vs
+
+```r
+min(sd(log(F12)), IQR / 1.35)*(4 / 3)^(1 / 5) * length(F12)^(-1 / 5)
+```
+
+```
+[1] 0.2419591
+```
+
+
+---
+
+
+## Testing the implementation
+
+
+```r
+bw_dens &lt;- density(log(F12))$bw
+
+range(density(log(F12), kernel = "epanechnikov")$y - 
+        density.myKernel(myKernel_ep, log(F12), bw = bw_dens)$y)
+```
+
+```
+[1] -0.0002651476  0.0008191560
+```
+
+```r
+range(density(log(F12), kernel = "gaussian")$y - 
+        density.myKernel(myKernel_gauss, log(F12), bw = bw_dens)$y)
+```
+
+```
+[1] -2.561036e-05  5.125416e-04
+```
+
+&lt;img src="Assignment-1-presentation_files/figure-html/unnamed-chunk-18-1.png" height="350" style="display: block; margin: auto;" /&gt;
+---
+## Benchmarking Bandwidth
+
+
+
+&lt;img src="Assignment-1-presentation_files/figure-html/unnamed-chunk-19-1.png" height="400" style="display: block; margin: auto;" /&gt;
+
+
+---
+## Scaling of Bandwidth methods
+
+
+
+&lt;img src="Assignment-1-presentation_files/figure-html/unnamed-chunk-20-1.png" height="400" style="display: block; margin: auto;" /&gt;
+
+---
+## Profiling
+
+[link](file:///C:/Users/Alexander%20Lollike/Documents/Dropbox/GitHub/CompStat/Assignment_1/Assignment-1-profiling-debbie/prof.html)
+
+---
+## Further improvements
+
+
+* More idiot-proofing
+
+* Additions to object (third derivative, scaling)
+
+* UCV
+
+* Testing of methods simulated data
+
+* RCPP
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightLines": true,
+"countIncrementalSlides": false,
+"ratio": "16:10",
+"navigation": {
+"scroll": false
+}
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();</script>
+
+<script>
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

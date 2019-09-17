@@ -18,36 +18,31 @@ class: center, middle, inverse, title-slide
 ---
 
 
-
+
 
 ## Agenda
 
 
-* Set-up object orienting and binning.
+* Set-up, object orienting and binning.
 
---
 
-* Benchmarking
---
+* Benchmarking 
+
 
 * Bandwidth selection, minimizing AMISE or Cross-validation.
---
+
 
 * AMISE: Silvermans rule of thumb. 
 
---
 
 * AMISE: Estimating `\(||f_0^{''}||_2^2\)`
 
---
 
 * K-fold Cross-validation
 
---
 
 * Results
 
---
 
 * Benchmarking and profiling.
 
@@ -74,22 +69,98 @@ x &lt;- (1-MM_var)* rnorm(Nsim, mean = par_1[1], sd = par_1[2]) +
 
 
 ---
-## Estimating density
+## Kernel object
 
 Using Niels' vectorized implementation, for given bandwidth.
 
 
 ```r
-EpDens &lt;- function (x, h, m = 512) {
+new_my_Kernel &lt;- function(K, rng){
+  if(!is.expression(K)){
+    stop("Kernel expression missing",
+         call. = FALSE)
+  }
+  obj &lt;- list()
+  obj$rng = rng
+  obj$Kernel &lt;- function(x) #Not idiot proof. Expression in x is needed
+    eval(K)*(x&gt;=rng[1] &amp; x&lt;=rng[2])
+    
+  Int_K&lt;-try(integrate(obj$Kernel, lower = obj$rng[1], upper = obj$rng[2]), silent = T) #Does it integrate to 1?
+  
+  obj$DDif &lt;- function(x) eval(D(D(K,'x'),'x'))*(x&gt;=rng[1] &amp; x&lt;=rng[2]) #Double differentiated
+  
+  obj$sig_2 &lt;- integrate(function(x) x^2* obj$Kernel(x), lower = obj$rng[1], upper = obj$rng[2]) #calculate sigma_K^2
+  
+  obj$K_2 &lt;- integrate(function(x) obj$Kernel(x)^2, lower = obj$rng[1], upper = obj$rng[2]) #Calculate K_2^2
+  
+  #Tests and idiot-proofing
+  [...]
+
+  obj$silverman &lt;- function(data){
+    [...]
+  }
+  obj$BW_plugin &lt;- function(data){
+    [...]
+  }
+  obj$LOOCV &lt;- function(data, n, h) {
+    [...]
+  }
+  structure(obj , class = c("my_Kernel"))
+}
+```
+
+---
+## Creating kernels
+
+```r
+Ep_kern &lt;- my_Kernel(K=expression(3/4*(1-x^2)),rng=c(-1,1)) #Epanechnikov, non-scaled
+
+Ep_kern_sc &lt;- my_Kernel(K=expression(3/4*(1-x^2/5)/sqrt(5)),rng=c(-sqrt(5),sqrt(5))) #Epanechnikov, scaled
+
+G_kern &lt;- my_Kernel(K=expression(1/sqrt(2*pi)*exp(-x^2/2))) #Gaussian
+```
+
+
+## Density using kernel
+
+
+```r
+my_density&lt;-function(x, K, bw = "gauss", m = 512){
   rg &lt;- range(x)
+
+  if(is.numeric(bw)){
+    h &lt;- bw
+  }else{
+    h &lt;- band_width(x, K, method = bw) 
+  }
   xx &lt;- seq(rg[1] - 3 * h, rg[2] + 3 * h, length.out = m)
   y &lt;- numeric(m) 
   const &lt;- (h * length(x))
   for (i in seq_along(xx))
-    y[i] &lt;- sum((1-(x-xx[i])^2/h^2)*(((x-xx[i])/h)&lt;1 &amp; ((x-xx[i])/h)&gt;-1))/const*3/4
-  list(x = xx, y = y)
+    y[i] &lt;- sum(K$Kernel((x - xx[i]) / h))
+  list(x = xx, y = y / const, h = h)
 }
 ```
+
+---
+## Difference compared to R
+
+```r
+BW_R&lt;-0.9 * min(sd(log(F12)), as.numeric(quantile(log(F12), p = 0.75) - quantile(log(F12),p=0.25))/1.34) * length(F12) ^ (-1 / 5)
+#my_density
+dens_G &lt;- my_density(log(F12),G_kern, bw = BW_R, m=512)
+dens_E &lt;- my_density(log(F12),Ep_kern_sc, bw = BW_R, m=512)
+#density
+dens_GR &lt;- density(log(F12),kernel = "gaussian")
+dens_ER &lt;- density(log(F12),kernel = "epanechnikov")
+```
+
+---
+## How does it look?
+
+&lt;img src="Presentation_ALL_files/figure-html/unnamed-chunk-7-1.png" height="400" style="display: block; margin: auto;" /&gt;
+--
+* FFT?
 
 ---
 ## Bandwidth
@@ -115,24 +186,27 @@ $$
 \tilde{\sigma}=\min \lbrace \hat{\sigma}, \text{IQR}/1.35 \rbrace
 $$
 
-&lt;img src="Presentation_ALL_files/figure-html/plot1-1.png" style="display: block; margin: auto;" /&gt;
----
-## How does it look?
-
-&lt;img src="Presentation_ALL_files/figure-html/unnamed-chunk-5-1.png" style="display: block; margin: auto;" /&gt;
-
-
 
 ---
-## Problem 1.4
+## timing
 
 
-```r
-hist(log(infrared$F12), 20); rug(log(infrared$F12))
-hist(log(infrared$F12), 100); rug(log(infrared$F12))
+```
+Coordinate system already present. Adding new coordinate system, which will replace the existing one.
 ```
 
-&lt;img src="Presentation_ALL_files/figure-html/unnamed-chunk-6-1.png" style="display: block; margin: auto;" /&gt;
+&lt;img src="Presentation_ALL_files/figure-html/unnamed-chunk-8-1.png" style="display: block; margin: auto;" /&gt;
+
+---
+
+&lt;img src="Presentation_ALL_files/figure-html/unnamed-chunk-9-1.png" style="display: block; margin: auto;" /&gt;
+
+
+
+--
+# next step
+
+*
     </textarea>
 <style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
 <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>

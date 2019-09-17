@@ -1,0 +1,510 @@
+---
+title: "Assignment 1 <br> Kernel density estimation"
+author: "ADA"
+date: "September 18, 2019"
+
+output:
+  xaringan::moon_reader:
+    css: ["science.css"]
+    nature:
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: '16:10'
+      navigation:
+        scroll: false
+---
+
+## Assignment 1: Density estimation
+
+Implement a kernel density estimator using the Epanechnikov kernel, $K(x) = \frac34(1 − x^2)1_{[−1,1]}(x)$, and implement one or more bandwidth selection algorithms using either AMISE plug-in methods or cross-validation methods. Test the implementation and compare the results with the results of using density in R. It may be a good idea to use real data to investigate how the bandwidth selection works, but for benchmarking and profiling it is best to use simulated data. Think about how to make your implementation as general and generic as possible.
+
+---
+```{r init, echo = FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(cache = TRUE, fig.width = 8, fig.height = 6, comment = NA, dev.args = list(bg = 'transparent'), fig.align = "center")
+
+source("Assignment-1-S3.R")
+
+library("microbenchmark")
+library("ggplot2")
+
+```
+
+## Kernel object
+
+```{r, echo = TRUE, eval = FALSE}
+myKernel <- function(K, rng = c(-Inf, Inf)){
+  
+  if(!is.expression(K)){
+    stop("Kernel expression missing",
+         call. = FALSE)
+  }
+  
+  obj <- list()
+  obj$rng = rng
+  obj$kernel <- function(x)
+    eval(K) * (x >= rng[1] & x <= rng[2])
+  
+  Int_K <- try(integrate(obj$kernel, lower = obj$rng[1], 
+                         upper = obj$rng[2]), silent = T)
+  
+  if(class(Int_K) == "try-error"){
+    stop(warning(Int_K))
+  }else if(!(Int_K$value < 1.01 & Int_K$value > 0.99 & 
+             Int_K$abs.error < 0.1)){
+    stop(paste("Kernel integrates to", Int_K$value))
+  }
+  
+  structure(obj , class = c("myKernel"))
+
+}
+
+```
+
+---
+
+## Kernel object 
+
+We include $||K||_2^2$ and $\sigma^2_K$ in myKernel and check if they are well-defined
+
+\begin{align*}
+||K||_2^2 = \int K(x)^2 \text{d}x \\
+\sigma^2_K = \int x^2 K(x) \text{d}x
+\end{align*}
+
+
+```{r, echo = TRUE, eval = FALSE}
+  
+  obj$sig_2 <- integrate(function(x) x^2 * obj$kernel(x), 
+                         lower = obj$rng[1], 
+                         upper = obj$rng[2])
+  ifelse(obj$sig_2$abs.error < 1e-12,
+         obj$sig_2 <- obj$sig_2$value, 
+         warning("Could not evaluate sigma_K^2"))
+  
+  obj$K_2 <- integrate(function(x) obj$kernel(x)^2, 
+                       lower = obj$rng[1], 
+                       upper = obj$rng[2])
+  ifelse(obj$K_2$abs.error < 1e-12,
+         obj$K_2 <- obj$K_2$value, 
+         warning("Could not evaluate K_2^2"))
+  
+```
+
+---
+
+## Kernel object
+
+We include Silverman's rule of thumb as a function in myKernel.
+
+\begin{align*}
+h_n = \biggl( \frac{||K||_2^2}{\sigma_K^4 ||f_0''||_2^2}\biggr)^{1/5} n^{-1/5}
+\end{align*}
+
+
+```{r, echo = TRUE, eval = FALSE}
+
+  obj$silverman <- function(data, norm_K, sigma_K) {
+    sigma <- min(sd(data), 
+                 as.numeric(quantile(data, p=0.75) - 
+                                        quantile(data, p=0.25))/ 1.35)
+    ddf <- 1 / (2 * sqrt(pi)) * 3 / (4 * sigma^5)
+    (norm_K / (sigma_K^2 * ddf))^(1 / 5) * 
+      length(data)^(- 1 / 5)
+  }
+  
+```
+
+---
+
+## Kernel object
+
+We include a function that makes leave-one-out cross validation
+
+```{r, eval = FALSE}
+obj$LOOCV <- function(data, h) {
+    n <- length(data)
+    z <- numeric(n)
+    for(i in seq_along(data)) {
+      y <- data[-i]
+      z[i] <- sum(obj$kernel((data[i] - y) / h)) / 
+        ((n - 1) * h)
+    }
+    sum((z))
+  }
+```
+
+---
+## Kernel object
+
+We call myKernel with the Epanechnikov kernel 
+
+\begin{align*}
+K(x) = \frac{3}{4}(1 - x^2) 1_{[-1,1]}(x)
+\end{align*}
+
+
+```{r}
+myKernel_ep <- myKernel(K = expression(3 / 4 * (1 - x^2)), 
+                rng = c(-1, 1))
+
+```
+
+---
+
+## Bandwidth selection
+
+We implement a bandwidth selection method that takes myKernel as argument 
+
+Methods:
+
+* Silverman's rule of thumb
+
+* Plug-in methods with the gaussian and Epanechnikov kernel as pilot
+
+* Leave-one-out cross validation
+
+```{r, eval = FALSE}
+bandwidth.myKernel <- function(obj, data, 
+                               method = "plug-in",
+                               pilot = "gauss") {
+  
+  method <- match.arg(method, c("silverman", "plug-in", 
+                                "cv"))
+  
+  if(method == "silverman")
+    h <- obj$silverman(data, obj$K_2, obj$sig_2)
+ 
+  h
+   
+}
+
+```
+
+---
+
+## Bandwidth selection - plug-in methods
+
+We can calculate 
+
+\begin{align*}
+||\tilde{f}''||_2^2 = \frac{1}{n^2 r^6} \sum_{i=1}^n \sum_{j=1}^n \int H''\Bigl( \frac{x - x_i}{r} \Bigr) H''\Bigl( \frac{x - x_j}{r} \Bigr) \text{d} x
+\end{align*}
+
+analytically for the gaussian and the Epanechnikov kernels
+
+\begin{align*}
+r = \biggl( \frac{||H||_2^2}{\sigma_H^4 ||f_0||_2^2}\biggr)^{1/5} n^{-1/5} \\
+h = \biggl( \frac{||K||_2^2}{\sigma_K^4 ||\tilde{f}''||_2^2}\biggr)^{1/5} n^{-1/5}
+\end{align*}
+
+---
+
+## Bandwidth selection - plug-in methods
+
+
+```{r, eval = FALSE}
+if(method == "plug-in") {
+    
+    n <- length(data)
+    s <- numeric(n - 1)
+    if(pilot == "gauss") {
+      r <- obj$silverman(data, 1 / (2 * sqrt(pi)), 1)
+      for(i in seq_along(data[-1])){
+        z <- (1 / (2 * sqrt(pi)) * exp(-(data[i] - data[(i + 1):n])^2 / (4 * r^2)) * 
+                (3 / 4 * r - 3 / (4 * r) * (data[i] - data[(i + 1):n])^2 + 
+                   (data[i] - data[(i + 1):n])^4 / (16 * r^3)))
+        s[i] <- sum(z)
+      }
+      diagonal <- (1 / (2 * sqrt(pi)) * 1 * (3 / 4 * r))
+      f <- 1 / (n^2 * r^6) * (sum(s) * 2 + n * diagonal)
+      h <- (obj$K_2 / (obj$sig_2^2 * f))^(1 / 5) * n^(- 1 / 5)
+    }
+    
+  }
+```
+
+---
+## Bandwidth selection - plug-in
+
+```{r, eval = FALSE}
+if(method == "plug-in") {
+    
+    n <- length(data)
+    s <- numeric(n - 1)
+    
+    if(pilot == "ep") {
+      r <- obj$silverman(data, 0.6, 0.2)
+      for(i in seq_along(data[-1])){
+        z <- (pmin(data[i], data[(i + 1):n]) - 
+                pmax(data[i], data[(i + 1):n]) + 2 * r)
+        s[i] <- sum(z * (z > 0))
+      }
+      f <- 1 / (n^2 * r^6) * 9 / 4 * (sum(s) * 2 + n * 2 * r)
+        
+      h <- (obj$K_2 / (obj$sig_2^2 * f))^(1 / 5) * n^(- 1 / 5)
+    }
+  }
+```
+
+---
+
+## Bandwidth selection - LOOCV
+
+\begin{align*}
+&\hat{f}_h^{-i} = \frac{1}{h(n-1)}\sum_{\substack{j=1 \\ j\neq i}}^n K\Bigl( \frac{x_i - x_j}{h} \Bigr) \\
+&L_{CV}(h) = \sum_{i=1}^n \hat{f}_h^{-i} \\
+&\hat{h} = \arg \max L_{CV}(h)
+\end{align*}
+
+
+
+```{r, eval = FALSE}
+
+if(method == "cv") {
+    h <- optim(par = 0.2, 
+               fn = function(h) - obj$LOOCV(data, h),
+               method = "Brent", lower = 0.000001, 
+               upper = 10^3)$par
+  }
+  
+```
+
+---
+
+## Density estimation
+
+We implement a density estimation method that takes myKernel as argument and calls the bandwidth selection method
+
+```{r, eval = FALSE}
+
+density.myKernel <- function(obj, data, m = 512,
+                             bw = "plug-in",
+                             pilot = "gauss",
+                             binning = FALSE) {
+  
+  if(is.numeric(bw)) h <- bw
+  else h <- bandwidth.myKernel(obj, data, method = bw, pilot)
+  
+  rg <- range(data) + c(-3 * h, 3 * h)
+  xx <- seq(rg[1], rg[2], length.out = m)
+  y <- numeric(m) 
+  for (i in seq_along(xx)) {
+    y[i] <- sum(obj$kernel((xx[i] - data) / h))
+  }
+  y <- y / (length(data) * h)
+  list(x = xx, y = y, h = h)
+}
+
+```
+
+---
+
+## Density estimation - binning
+
+We include binning in the method
+
+```{r, eval = FALSE}
+
+  rg <- range(data) + c(-3 * h, 3 * h)
+  xx <- seq(rg[1], rg[2], length.out = m)
+  
+  if(binning == FALSE){
+    y <- numeric(m) 
+    for (i in seq_along(xx)) {
+      y[i] <- sum(obj$kernel((xx[i] - data) / h))
+    }
+    y <- y / (length(data) * h)
+  }
+  if (!binning == FALSE){
+    weights <- kernbin(data, rg[1], rg[2], m)
+    kerneval <- obj$kernel((xx - xx[1]) / h) / h
+    kerndif <- toeplitz(kerneval)
+    y <- colSums(weights * kerndif)
+  }
+  list(x = xx, y = y, h = h)
+  
+```
+
+---
+
+## Testing the implementation
+
+Silverman's rule of thumb
+
+We scale the Epanechnikov kernel to have variance 1 to be able to compare with the density function
+
+```{r}
+
+myKernel_ep <- myKernel(K = expression(3 / 4 * (1 - x^2 / 5) / sqrt(5)),
+                        rng=c(-sqrt(5), sqrt(5)))
+
+myKernel_gauss <- myKernel(K = expression(1 / (sqrt(2 * pi)) * exp(-x^2 / 2)),
+                           rng = c(-Inf, Inf))
+
+
+```
+
+We test on the logarithm to the F12 data 
+
+```{r}
+infrared <- read.table("infrared.txt", header = TRUE)
+F12 <- infrared$F12
+
+density(log(F12), kernel = "epanechnikov")$bw
+density(log(F12), kernel = "gaussian")$bw
+
+
+bandwidth.myKernel(myKernel_ep, log(F12), method = "silverman")
+bandwidth.myKernel(myKernel_gauss, log(F12), method = "silverman")
+```
+
+---
+## Silverman vs Silverman
+Original version, or not
+```{r, echo = FALSE}
+IQR <- as.numeric(quantile(log(F12),p=0.75)-quantile(log(F12),p=0.25))
+```
+
+```{r}
+min(sd(log(F12)), IQR / 1.34) * 0.9 * length(F12)^(-1 / 5)
+```
+vs
+```{r}
+min(sd(log(F12)), IQR / 1.35)*(4 / 3)^(1 / 5) * length(F12)^(-1 / 5)
+```
+
+
+---
+
+
+## Testing the implementation
+
+```{r}
+bw_dens <- density(log(F12))$bw
+
+range(density(log(F12), kernel = "epanechnikov")$y - 
+        density.myKernel(myKernel_ep, log(F12), bw = bw_dens)$y)
+
+range(density(log(F12), kernel = "gaussian")$y - 
+        density.myKernel(myKernel_gauss, log(F12), bw = bw_dens)$y)
+
+```
+
+```{r, echo = FALSE, fig.asp = 0.5,out.height = 350, dpi=220}
+
+par(mfrow = c(1, 2))
+
+plot(density(log(F12), kernel = "epanechnikov")$y, type = "l", col = "red",
+     xlab = "x", ylab = "Density", lwd = 4, main ="Epanechnikov kernel")
+lines(density.myKernel(myKernel_ep, log(F12), bw = bw_dens)$y, 
+      col = "blue", lwd = 2)
+
+plot(density(log(F12), kernel = "epanechnikov")$y - 
+       density.myKernel(myKernel_ep, log(F12), bw = bw_dens)$y, 
+     type = "l", lwd = 1, 
+     ylab = "Difference", xlab = "x", main = "Epanechnikov kernel")
+
+par(mfrow = c(1, 1))
+
+```
+---
+## Benchmarking Bandwidth
+
+```{r plot_bench1, echo = FALSE, cache = TRUE}
+myKernel_ep <- myKernel(K = expression(3 / 4 * (1 - x^2)), 
+                        rng = c(-1, 1))
+
+bandwidth_bench <- microbenchmark(bandwidth.myKernel(obj = myKernel_ep, 
+                                                     data = log(F12), 
+                                                     method = "silverman"),
+                                  bandwidth.myKernel(obj = myKernel_ep, 
+                                                     data = log(F12), 
+                                                     method = "plug-in",
+                                                     pilot = "gauss"),
+                                  bandwidth.myKernel(obj = myKernel_ep, 
+                                                     data = log(F12), 
+                                                     method = "plug-in",
+                                                     pilot = "ep"),
+                                  bandwidth.myKernel(obj = myKernel_ep, 
+                                                     data = log(F12), 
+                                                     method = "cv"))
+
+levels(bandwidth_bench$expr) <- c("silverman", "plug-in Gaussian", 
+                                  "plug-in Epanechnikov", "LOOCV")
+```
+
+```{r, echo = FALSE, out.height = 400, dpi=400, message = FALSE}
+autoplot(bandwidth_bench) + 
+  geom_jitter(position = position_jitter(0.2, 0), 
+              aes(color = expr), alpha = 0.4) + 
+  aes(fill = I("gray")) +
+  theme(legend.position = "none")
+```
+
+
+---
+## Scaling of Bandwidth methods
+
+```{r plot_bench2, echo = FALSE, cache = TRUE}
+set.seed(1234)
+Nsim <- 2^20
+par_1 <- c( 0, 1)
+par_2 <- c( 6, 2)
+
+MM_var<-rbinom(Nsim, size = 1,p=0.5) #Bernouilli variables
+
+x <- (1-MM_var)* rnorm(Nsim, mean = par_1[1], sd = par_1[2]) +
+  MM_var * rnorm(Nsim, mean = par_2[1], sd = par_2[2])
+
+conf <- expand.grid(
+  n = 2^(5:10),
+  method = c("silverman", "plug-in\", pilot = \"ep", 
+             "plug-in\", pilot = \"gauss", "cv")
+)
+
+calls <- paste0("bandwidth.myKernel(myKernel_ep, x[1:", conf[ , 1], "], 
+                method = \"", conf[ , 2], "\")")
+expr_list <- lapply(calls, function(x) parse(text = x)[[1]])
+
+bandwidth_bench_n <- microbenchmark(list = expr_list, times = 40L)
+
+levels(conf$method)<-c(levels(conf$method),"Plug_in_epan","Plug_in_gauss")
+
+conf$method[conf$method=='plug-in", pilot = "ep']<-"Plug_in_epan"
+conf$method[conf$method=='plug-in", pilot = "gauss']<-"Plug_in_gauss"
+
+bench_data <- as.data.frame(cbind(conf, time = summary(bandwidth_bench_n)$median))
+```
+
+```{r, echo = FALSE, out.height = 400, dpi=220, message = FALSE}
+ggplot(bench_data, aes(x = n, y = time, color = method)) + 
+  geom_abline(intercept = 7.5, slope = 1, color = "gray", linetype = 2) +
+  stat_summary(fun.y = "median", geom = "line") + 
+  stat_summary(fun.y = "median", geom = "point") + 
+  facet_wrap(~ "Median bandwidth calculation time") + 
+  scale_x_continuous(trans = "log2", breaks = 2^(5:10)) + 
+  scale_y_continuous("Time (s)", trans = "log2", 
+                     breaks = c(1e3, 1e4, 1e5, 1e6, 1e7, 1e8), 
+                     labels = c("0.001", "0.01", "0.1", "1", "10", "100")) +
+  scale_color_discrete("Method:") + 
+  theme(legend.position="top")
+```
+
+---
+## Profiling
+
+[link](file:///C:/Users/Alexander%20Lollike/Documents/Dropbox/GitHub/CompStat/Assignment_1/Assignment-1-profiling-debbie/prof.html)
+
+---
+## Further improvements
+
+
+* More idiot-proofing
+
+* Additions to object (third derivative, scaling)
+
+* UCV
+
+* Testing of methods simulated data
+
+* RCPP

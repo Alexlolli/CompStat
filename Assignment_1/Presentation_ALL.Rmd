@@ -17,6 +17,9 @@ output:
 knitr::opts_chunk$set(cache = TRUE, fig.width = 8, fig.height = 6, comment = NA,
                       dev.args = list(bg = 'transparent'), fig.align = "center")
 
+cat("\014")
+rm(list=ls())
+
 library(dplyr)
 library(ggplot2)
 library(microbenchmark)
@@ -25,37 +28,270 @@ infrared <- read.table("C:/Users/Alexander Lollike/Documents/Dropbox/GitHub/Comp
 
 F12<-infrared$F12
 
+set.seed(1234)
+Nsim <- 2^20
+par_1 <- c( 0, 1)
+par_2 <- c( 6, 2)
+
+
+MM_var<-rbinom(Nsim, size = 1,p=0.5) #Bernouilli variables
+
+x <- (1-MM_var)* rnorm(Nsim, mean = par_1[1], sd = par_1[2]) +
+  MM_var * rnorm(Nsim, mean = par_2[1], sd = par_2[2])
+
+
+rg_x <- range(x)
+x_vals <- seq(rg_x[1], rg_x[2], length.out = 512)
+
+#object orient
+
+new_my_Kernel <- function(K, rng){
+  if(!is.expression(K)){
+    stop("Kernel expression missing",
+         call. = FALSE)
+  }
+  
+  obj <- list()
+  
+  obj$rng = rng
+
+  obj$Kernel <- function(x) #Not idiot proof. Expression in x is needed
+    eval(K)*(x>=rng[1] & x<=rng[2])
+    
+  Int_K<-try(integrate(obj$Kernel, lower = obj$rng[1], upper = obj$rng[2]), silent = T) #Does it integrate to 1?
+  
+  if(class(Int_K)=="try-error"){
+    stop(warning(Int_K))
+  }else if(!(Int_K$value < 1.01 & Int_K$value > 0.99 & Int_K$abs.error < 0.1)){
+    stop(paste("Kernel integrates to", Int_K$value))
+  }
+  
+  obj$DDif <- function(x) #Double differentiated
+    eval(D(D(K,'x'),'x'))*(x>=rng[1] & x<=rng[2])
+  
+  obj$sig_2 <- integrate(function(x) x^2* obj$Kernel(x), lower = obj$rng[1], upper = obj$rng[2]) #calculate sigma_K^2
+  
+  obj$K_2 <- integrate(function(x) obj$Kernel(x)^2, lower = obj$rng[1], upper = obj$rng[2]) #Calculate K_2^2
+  
+  ifelse(obj$sig_2$abs.error < 1e-12,
+         obj$sig_2 <- obj$sig_2$value, 
+         warning("Could not evaluate sigma_K^2"))
+  
+  ifelse(obj$K_2$abs.error < 1e-12,
+         obj$K_2 <- obj$K_2$value, 
+         warning("Could not evaluate K_2^2"))
+  
+
+  obj$silverman <- function(data){
+    
+    n <- length(data)
+    
+    IQR <- as.numeric(quantile(data,p=0.75)-quantile(data,p=0.25))
+    
+    sig <- min(sd(data), IQR/1.35)
+    
+    f_est <- 3/(2*sqrt(pi)*4*sig^5)
+    
+    (obj$K_2/(obj$sig_2^2*f_est))^(1/5)*n^(-1/5)
+  }
+  
+  obj$BW_plugin <- function(data){
+    
+    r <- obj$silverman(data)
+    
+    rng_data <- range(data)
+    
+    n <- length(data)
+    
+    s <- numeric(n-1)
+    
+    int_f<-function(x){
+      sapply(x,function(x){
+        for(i in seq_along(data[-1])){
+          s[i]<-sum(
+            obj$DDif((x-data[i])/r)*obj$DDif((x-data[(i+1):n])/r)) #calculate triangle matrix vectorized
+        }
+        sum(s)*2+sum(obj$DDif((x-data)/r)^2) #Use symmetry of matrix and and diagonal
+      })
+    }
+    
+    int_res <- integrate(int_f,lower = rng_data[1]-r, upper = rng_data[2]+r, subdivisions = 100L, rel.tol = 0.05)
+    
+    f_est <- 1/(n^2*r^6)*int_res$value
+    
+    (obj$K_2/(obj$sig_2^2*f_est))^(1/5)*n^(-1/5)
+  }
+  
+  obj$LOOCV <- function(data, n, h) {
+    
+    z <- NULL
+    for(i in seq_along(data)) {
+      y <- data[-i]
+      z[i] <- sum(obj$Kernel((data[i] - y) / h)) / ((n-1) * h)
+    }
+    sum(z)
+  }
+  structure(obj , class = c("my_Kernel"))
+}
+
+my_Kernel<-function(K, rng = c(-Inf, Inf)){
+  new_my_Kernel(K, rng)
+}
+
+band_width<-function(data, K, method = "gauss", scale_EP = F){
+  
+  n <- length(data)
+
+  if(method == "plug_in"){
+    
+    BW <- K$BW_plugin(data)
+    
+  }else if(method == "silverman"){
+    
+    BW <- K$silverman(data)
+    
+  }else if(method == "LOOCV"){
+    
+    BW<- optim(par = 5, 
+               fn = function(h) - K$LOOCV(data, n, h),
+               method = "Brent", lower = 0.0001, upper = 100)$par
+    
+  }else if(method == "epanechnikov"){
+    
+    IQR <- as.numeric(quantile(data,p=0.75)-quantile(data,p=0.25))
+    
+    sig <- min(sd(data),IQR/ 1.35)
+    
+    f_est <- 3/(2*sqrt(pi)*4*sig^5)
+    
+    r <- (0.6/(0.04*f_est))^(1/5)*n^(-1/5) #silvermans rule of thumb, epanechnikov pilot
+    
+    s <- numeric(n-1)
+    
+    for(i in seq_along(data[-1])){
+      z <-  (pmin(data[i], data[(i+1):n])-pmax(data[i], data[(i+1):n])+2*r) #calculate triangle matrix vectorized
+      s[i] <- sum(z*(z>0))
+    }
+    
+    int_res <- 9/4*(sum(s)*2+n*2*r) #Use symmetry of matrix and and diagonal of length 2*r
+    
+    f_est <- 1/(n^2*r^6)*int_res
+    if(scale_EP){
+      BW <- (K$K_2/(K$sig_2^2*f_est))^(1/5)*n^(-1/5)/sqrt(5)
+    }else{
+      BW <- (K$K_2/(K$sig_2^2*f_est))^(1/5)*n^(-1/5)
+    }
+  }else if(method == "gauss"){
+    IQR <- as.numeric(quantile(data,p=0.75)-quantile(data,p=0.25))
+    
+    sig <- min(sd(data),IQR/ 1.35)
+    
+    r <- (4/(3*n))^(1/5)*sig #silvermans rule of thumb, gaussian pilot
+    
+    s <- numeric(n-1)
+
+    for(i in seq_along(data[-1])){
+      #calculate triangle matrix vectorized
+      
+      z <-  (1 / (2 * sqrt(pi)) * exp(-(data[i] - data[(i+1):n])^2 / (4 * r^2)) *
+                                           (3 / 4 * r - 3 / (4 * r) * (data[i] - data[(i+1):n])^2 + 
+                                                                      (data[i] - data[(i+1):n])^4 / (16 * r^3)))
+      s[i] <- sum(z)
+    }
+    
+    sum(s)
+    
+    diagonal <- (1 / (2 * sqrt(pi)) * 1 * (3 / 4 * r ))
+    
+    int_res <- (sum(s)*2+n*diagonal) #Use symmetry of matrix and and diagonal of length 2*r
+    
+    f_est <- 1/(n^2*r^6)*int_res
+    
+    if(scale_EP){
+      BW <- (K$K_2/(f_est))^(1/5)*n^(-1/5)
+    }else{
+      BW <- (K$K_2/(K$sig_2^2*f_est))^(1/5)*n^(-1/5)
+    }
+  }
+  BW
+}
+
+
+kernbin <- function(x, lo, hi, m) {
+  w <- numeric(m)
+  delta <- (hi - lo) / (m - 1)
+  for(i in seq_along(x)) {
+    ii <- floor((x[i] - lo) / delta + 0.5) + 1 #we ought to adjust for a-symmetric kernels, but it is not done here
+    w[ii] <- w[ii] + 1
+  }
+  w/sum(w)
+}
+
+
+my_density<-function(x, K, bw = "gauss", m = 512, scale_EP = F){
+  rg <- range(x)
+
+  if(is.numeric(bw)){
+    h <- bw
+  }else{
+    h <- band_width(x, K, method = bw, scale_EP = scale_EP) 
+  }
+  
+  xx <- seq(rg[1] - 3 * h, rg[2] + 3 * h, length.out = m)
+  y <- numeric(m) 
+  const <- (h * length(x))
+  for (i in seq_along(xx))
+    y[i] <- sum(K$Kernel((x-xx[i])/h))
+  list(x = xx, y = y/const, h = h)
+}
+
+my_density_bin<-function(x, K, bw = "gauss", bins = 512, scale_EP =F){
+  #find bandwidth first
+  rg <- range(x)
+  
+  w <- kernbin(x, rg[1], rg[2], bins)
+  xx <- seq(rg[1], rg[2], length.out = bins)
+  
+  if(is.numeric(bw)){
+    h <- bw
+  }else{
+    h <- band_width(x, K, method = bw, scale_EP = scale_EP) 
+  }
+  
+  #First row of toeplitz matrix
+  kerneval <- K$Kernel((xx - xx[1])/h)/h
+  kerndif <- toeplitz(kerneval)
+  y <- colSums(w * kerndif)
+
+  list(x = xx, y = y, h = h)
+}
+
 
 ```
 
 ## Agenda
 
 
-* Set-up object orienting and binning.
+* Set-up, object orienting and binning.
 
---
 
-* Benchmarking
---
+* Benchmarking 
+
 
 * Bandwidth selection, minimizing AMISE or Cross-validation.
---
+
 
 * AMISE: Silvermans rule of thumb. 
 
---
 
 * AMISE: Estimating $||f_0^{''}||_2^2$
 
---
 
 * K-fold Cross-validation
 
---
 
 * Results
 
---
 
 * Benchmarking and profiling.
 
@@ -65,7 +301,7 @@ F12<-infrared$F12
 
 Simulate multimodal data with density $$  f_0(x) = \frac{1}{2 }\left( \frac{1}{\sqrt{2\pi\sigma_1}} e^{\frac{-(x-\mu_1)^2}{2\sigma_1^2}}+ \frac{1}{\sqrt{2\pi\sigma_2}} e^{\frac{-(x-\mu_2)^2}{2\sigma_2^2}} \right) $$
 
-```{r, echo = FALSE}
+```{r code, echo = FALSE}
 set.seed(1234)
 Nsim <- 2^20
 par_1 <- c( 0, 1)
@@ -95,22 +331,102 @@ lines(x=x_vals,y=0.5*dnorm(x_vals, mean = par_1[1], sd = par_1[2])+0.5*dnorm(x_v
 
 
 ---
-## Estimating density
+## Kernel object
 
 Using Niels' vectorized implementation, for given bandwidth.
 
-```{r}
-EpDens <- function (x, h, m = 512) {
+```{r, eval = FALSE}
+new_my_Kernel <- function(K, rng){
+  if(!is.expression(K)){
+    stop("Kernel expression missing",
+         call. = FALSE)
+  }
+  obj <- list()
+  obj$rng = rng
+  obj$Kernel <- function(x) #Not idiot proof. Expression in x is needed
+    eval(K)*(x>=rng[1] & x<=rng[2])
+    
+  Int_K<-try(integrate(obj$Kernel, lower = obj$rng[1], upper = obj$rng[2]), silent = T) #Does it integrate to 1?
+  
+  obj$DDif <- function(x) eval(D(D(K,'x'),'x'))*(x>=rng[1] & x<=rng[2]) #Double differentiated
+  
+  obj$sig_2 <- integrate(function(x) x^2* obj$Kernel(x), lower = obj$rng[1], upper = obj$rng[2]) #calculate sigma_K^2
+  
+  obj$K_2 <- integrate(function(x) obj$Kernel(x)^2, lower = obj$rng[1], upper = obj$rng[2]) #Calculate K_2^2
+  
+  #Tests and idiot-proofing
+  [...]
+
+  obj$silverman <- function(data){
+    [...]
+  }
+  obj$BW_plugin <- function(data){
+    [...]
+  }
+  obj$LOOCV <- function(data, n, h) {
+    [...]
+  }
+  structure(obj , class = c("my_Kernel"))
+}
+
+
+```
+
+---
+## Creating kernels
+```{r, warning = FALSE}
+Ep_kern <- my_Kernel(K=expression(3/4*(1-x^2)),rng=c(-1,1)) #Epanechnikov, non-scaled
+
+Ep_kern_sc <- my_Kernel(K=expression(3/4*(1-x^2/5)/sqrt(5)),rng=c(-sqrt(5),sqrt(5))) #Epanechnikov, scaled
+
+G_kern <- my_Kernel(K=expression(1/sqrt(2*pi)*exp(-x^2/2))) #Gaussian
+```
+
+
+## Density using kernel
+
+```{r, eval = F}
+my_density<-function(x, K, bw = "gauss", m = 512){
   rg <- range(x)
+
+  if(is.numeric(bw)){
+    h <- bw
+  }else{
+    h <- band_width(x, K, method = bw) 
+  }
   xx <- seq(rg[1] - 3 * h, rg[2] + 3 * h, length.out = m)
   y <- numeric(m) 
   const <- (h * length(x))
   for (i in seq_along(xx))
-    y[i] <- sum((1-(x-xx[i])^2/h^2)*(((x-xx[i])/h)<1 & ((x-xx[i])/h)>-1))/const*3/4
-  list(x = xx, y = y)
+    y[i] <- sum(K$Kernel((x - xx[i]) / h))
+  list(x = xx, y = y / const, h = h)
 }
+```
+
+---
+## Difference compared to R
+```{r}
+
+BW_R<-0.9 * min(sd(log(F12)), as.numeric(quantile(log(F12), p = 0.75) - quantile(log(F12),p=0.25))/1.34) * length(F12) ^ (-1 / 5)
+#my_density
+dens_G <- my_density(log(F12),G_kern, bw = BW_R, m=512)
+dens_E <- my_density(log(F12),Ep_kern_sc, bw = BW_R, m=512)
+#density
+dens_GR <- density(log(F12),kernel = "gaussian")
+dens_ER <- density(log(F12),kernel = "epanechnikov")
 
 ```
+
+---
+## How does it look?
+
+```{r, echo = FALSE, fig.asp = 0.5,out.height = 400, dpi=420}
+par(mfrow = c(1, 2))
+plot(dens_ER$x, dens_ER$y-dens_E$y, main = "Difference epanechnikov", ylab = "Difference ", xlab = "x")
+plot(dens_GR$x, dens_GR$y-dens_G$y, main = "Difference gaussian", ylab = "Difference", xlab="x")
+```
+--
+* FFT?
 
 ---
 ## Bandwidth
@@ -136,41 +452,70 @@ $$
 \tilde{\sigma}=\min \lbrace \hat{\sigma}, \text{IQR}/1.35 \rbrace
 $$
 
-```{r plot1, echo = FALSE}
-
-tilde_sd <- min( sd(log(F12)) , (quantile(log(F12),p=0.75)-quantile(log(F12),p=0.25)) / 1.35)
-
-f_Gauss_est <- 3/(8*tilde_sd^5*sqrt(pi))
-
-K_2 <- 3/5
-
-sigma_k_4 <- 1/25 
-
-h_n<-(K_2/(sigma_k_4*f_Gauss_est))^(1/5)*length(F12)^(-1/5)
-
-hist(log(F12), prob = T)
-lines(EpDens(log(F12), h = h_n), lty = 3)
-
-```
----
-## How does it look?
-
-```{r, echo = FALSE}
-par(mfrow = c(2, 1))
-<<plot1>>
-```
-
-
 
 ---
-## Problem 1.4
+## timing
 
-```{r hist1, eval = FALSE}
-hist(log(infrared$F12), 20); rug(log(infrared$F12))
-hist(log(infrared$F12), 100); rug(log(infrared$F12))
+```{r, warning=FALSE, echo = FALSE, cache = TRUE}
+
+bandwidth_bench <-microbenchmark(band_width(log(F12),Ep_kern,method="silverman"),
+                                 band_width(log(F12),Ep_kern,method="epanechnikov"),
+                                 band_width(log(F12),Ep_kern,method="gauss"),
+                                 band_width(log(F12),Ep_kern,method="LOOCV"))
+
+
+autoplot(bandwidth_bench) + 
+  geom_jitter(position = position_jitter(0.2, 0), 
+              aes(color = expr), alpha = 0.4) + 
+  aes(fill = I("gray")) + 
+  theme(legend.position = "none")
+
+
+
 ```
 
-```{r, echo = FALSE}
-par(mfcol = c(1, 2))
-<<hist1>>
+---
+
+```{r, warning=FALSE, echo = FALSE, cache = TRUE}
+set.seed(1234)
+MM_var<-rbinom(Nsim, size = 1,p=0.5) #Bernouilli variables
+
+x <- (1-MM_var)* rnorm(Nsim, mean = par_1[1], sd = par_1[2]) +
+  MM_var * rnorm(Nsim, mean = par_2[1], sd = par_2[2])
+
+
+conf <- expand.grid(
+  fun = c("silverman", "epanechnikov", "gauss", "LOOCV"),
+  n = 2^(5:11)
+)
+
+
+calls <- paste0('band_width(x[1:', conf[, 2], '], K = Ep_kern, method= "',conf[, 1], '" )', sep = '')
+expr_list <- lapply(calls, function(x) parse(text = x)[[1]])
+kern_benchmarks <- microbenchmark(list = expr_list, times = 40L)
+
+
+benchdata<-as.data.frame(cbind(conf,time=summary(kern_benchmarks)$median))
+
+
+ggplot(benchdata, aes(x = n, y = time, color = fun)) + 
+  geom_abline(intercept = exp(1), slope = 1, color = "gray", linetype = 2) +
+  stat_summary(fun.y = "median", geom = "line") + 
+  stat_summary(fun.y = "median", geom = "point") + 
+  facet_wrap(~ "Bandwidth calculation time") + 
+  scale_x_continuous(trans = "log2") + 
+  scale_y_continuous("Time (ms)", trans = "log", 
+                     breaks = c(1e2,1e4,1e5, 1e6, 1e7, 1e8), 
+                     labels = c("0.001", "0.01", "0.1", "1", "10", "100")) +
+  scale_color_discrete("Function:") + 
+  theme(legend.position="top")
+
 ```
+
+
+
+--
+# next step
+
+* 
+
