@@ -16,7 +16,7 @@ output:
 
 ## Assignment 1: Density estimation
 
-Implement a kernel density estimator using the Epanechnikov kernel, $K(x) = \frac34(1 − x^2)1_{[−1,1]}(x)$, and implement one or more bandwidth selection algorithms using either AMISE plug-in methods or cross-validation methods. Test the implementation and compare the results with the results of using density in R. It may be a good idea to use real data to investigate how the bandwidth selection works, but for benchmarking and profiling it is best to use simulated data. Think about how to make your implementation as general and generic as possible.
+Implement a kernel density estimator using the Epanechnikov kernel, $$K(x) = \frac{3}{4}(1-x^2)1_{ [ -1,1 ] }(x),$$ and implement one or more bandwidth selection algorithms using either AMISE plug-in methods or cross-validation methods. Test the implementation and compare the results with the results of using density in R. Think about how to make your implementation as general and generic as possible.
 
 ---
 ```{r init, echo = FALSE, warning = FALSE, message = FALSE}
@@ -154,7 +154,9 @@ myKernel_ep <- myKernel(K = expression(3 / 4 * (1 - x^2)),
 ## Bandwidth selection
 
 We implement a bandwidth selection method that takes myKernel as argument 
-
+$
+\qquad h_n = \biggl( \frac{||K||_2^2}{\sigma_K^4 ||f_0''||_2^2}\biggr)^{1/5} n^{-1/5}
+$
 Methods:
 
 * Silverman's rule of thumb
@@ -350,12 +352,10 @@ We test on the logarithm to the F12 data
 infrared <- read.table("infrared.txt", header = TRUE)
 F12 <- infrared$F12
 
-density(log(F12), kernel = "epanechnikov")$bw
-density(log(F12), kernel = "gaussian")$bw
-
-
-bandwidth.myKernel(myKernel_ep, log(F12), method = "silverman")
-bandwidth.myKernel(myKernel_gauss, log(F12), method = "silverman")
+c(density(log(F12), kernel = "epanechnikov")$bw,
+density(log(F12), kernel = "gaussian")$bw,
+bandwidth.myKernel(myKernel_ep, log(F12), method = "silverman"),
+bandwidth.myKernel(myKernel_gauss, log(F12), method = "silverman"))
 ```
 
 ---
@@ -508,3 +508,5 @@ ggplot(bench_data, aes(x = n, y = time, color = method)) +
 * Testing of methods simulated data
 
 * RCPP
+
+* Binned bandwidth algorithm

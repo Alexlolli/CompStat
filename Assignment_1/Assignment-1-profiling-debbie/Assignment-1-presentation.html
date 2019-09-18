@@ -20,7 +20,7 @@ class: center, middle, inverse, title-slide
 
 ## Assignment 1: Density estimation
 
-Implement a kernel density estimator using the Epanechnikov kernel, `\(K(x) = \frac34(1 â x^2)1_{[â1,1]}(x)\)`, and implement one or more bandwidth selection algorithms using either AMISE plug-in methods or cross-validation methods. Test the implementation and compare the results with the results of using density in R. It may be a good idea to use real data to investigate how the bandwidth selection works, but for benchmarking and profiling it is best to use simulated data. Think about how to make your implementation as general and generic as possible.
+Implement a kernel density estimator using the Epanechnikov kernel, `$$K(x) = \frac{3}{4}(1-x^2)1_{ [ -1,1 ] }(x),$$` and implement one or more bandwidth selection algorithms using either AMISE plug-in methods or cross-validation methods. Test the implementation and compare the results with the results of using density in R. Think about how to make your implementation as general and generic as possible.
 
 ---
 
@@ -149,7 +149,9 @@ myKernel_ep &lt;- myKernel(K = expression(3 / 4 * (1 - x^2)),
 ## Bandwidth selection
 
 We implement a bandwidth selection method that takes myKernel as argument 
-
+$
+\qquad h_n = \biggl( \frac{||K||_2^2}{\sigma_K^4 ||f_0''||_2^2}\biggr)^{1/5} n^{-1/5}
+$
 Methods:
 
 * Silverman's rule of thumb
@@ -343,35 +345,14 @@ We test on the logarithm to the F12 data
 infrared &lt;- read.table("infrared.txt", header = TRUE)
 F12 &lt;- infrared$F12
 
-density(log(F12), kernel = "epanechnikov")$bw
+c(density(log(F12), kernel = "epanechnikov")$bw,
+density(log(F12), kernel = "gaussian")$bw,
+bandwidth.myKernel(myKernel_ep, log(F12), method = "silverman"),
+bandwidth.myKernel(myKernel_gauss, log(F12), method = "silverman"))
 ```
 
 ```
-[1] 0.2071217
-```
-
-```r
-density(log(F12), kernel = "gaussian")$bw
-```
-
-```
-[1] 0.2071217
-```
-
-```r
-bandwidth.myKernel(myKernel_ep, log(F12), method = "silverman")
-```
-
-```
-[1] 0.23955
-```
-
-```r
-bandwidth.myKernel(myKernel_gauss, log(F12), method = "silverman")
-```
-
-```
-[1] 0.2419591
+[1] 0.2071217 0.2071217 0.2395500 0.2419591
 ```
 
 ---
@@ -458,6 +439,8 @@ range(density(log(F12), kernel = "gaussian")$y -
 * Testing of methods simulated data
 
 * RCPP
+
+* Binned bandwidth algorithm
     </textarea>
 <style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
 <script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
